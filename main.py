@@ -26,7 +26,7 @@ def main(page: ft.Page):
     accounts_df = service.get_accounts(con)
     tab_accounts = views.create_account_view(accounts_df)
 
-    holdings_df = None
+    holdings_df = service.get_holdings(con)
     tab_holdings = views.create_holding_view(holdings_df)
 
     prices_df = None
