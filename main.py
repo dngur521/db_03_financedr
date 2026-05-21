@@ -4,12 +4,16 @@ import service
 import views
 
 
+# =========================================================================
+# region: Main
+# =========================================================================
 def main(page: ft.Page):
     # region [Page Setup]
     page.title = "Finance Database"
     page.padding = 16
     page.window.width = 700
     page.window.height = 500
+    # page.scroll = ft.ScrollMode.ADAPTIVE
     # endregion
 
     con = service.connect_database("data/finance.db")
@@ -29,11 +33,15 @@ def main(page: ft.Page):
     holdings_df = service.get_holdings(con)
     tab_holdings = views.create_holding_view(holdings_df)
 
-    prices_df = None
-    tab_prices = views.create_price_view(prices_df)
+    # prices_df = None
+    # tab_prices = views.create_price_view(prices_df)
 
     join_df = service.get_joined_data(con)
     tab_join = views.create_join_view(join_df)
+
+    # tab_prices = ft.Text("보유 종목을 선택하면 시세를 볼 수 있습니다.")
+    join_df = join_df.sort_values(by="quantity", ascending=False)
+    tab_prices = views.create_price_view(join_df[["name", "ticker"]], con)
 
     tabs = ft.Tabs(
         length=5,
@@ -63,6 +71,7 @@ def main(page: ft.Page):
             ],
         ),
     )
+    # endregion
 
     page.add(
         tabs,
@@ -71,3 +80,5 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     ft.run(main)
+
+# endregion

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import duckdb
 import pandas as pd
 
@@ -17,6 +19,7 @@ def initialize(con: duckdb.DuckDBPyConnection):
     add_all_assets(con)
     add_all_accounts(con)
     add_all_holdings(con)
+    add_all_prices(con)
 
 
 # endregion
@@ -126,6 +129,55 @@ def get_holdings(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 # =========================================================================
 def get_joined_data(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return repo.find_all_joins(con)
+
+
+# endregion
+
+
+# =========================================================================
+# region: price
+# =========================================================================
+def add_all_prices(con: duckdb.DuckDBPyConnection):
+    today = pd.Timestamp.today()
+    last_business_day = (
+        today - pd.offsets.BDay(0 if today.dayofweek < 5 else 1)
+    ).date()
+
+    latest_date = repo.find_latest_price_date(con)
+    yesterday = last_business_day - timedelta(days=1)
+    print(f"[INFO] DB 최신 날짜: {latest_date}, 직전 영업일: {yesterday}")
+
+    if not latest_date or latest_date < yesterday:
+        one_year_ago = last_business_day - pd.DateOffset(years=1)
+
+        # 시작 날짜 (None이면 1년 전, 값이 있으면 latest_date 다음날부터)
+        start_date = (
+            one_year_ago if not latest_date else latest_date + timedelta(days=1)
+        )
+
+        print(f"[INFO] {start_date}부터 {yesterday}까지의 시세 데이터 수집 시작")
+        tickers = repo.find_all_holdings(con)["ticker"].unique()
+
+        for ticker in tickers:
+            df = data.fetch_price_data(ticker, start_date, yesterday)
+            repo.save_prices(con, ticker, df)
+
+        print("[INFO] 시세 데이터 수집 완료")
+    else:
+        print(f"[INFO] 최신 시세 데이터 확인 완료 (최신 날짜: {latest_date})")
+
+
+def get_prices(con: duckdb.DuckDBPyConnection, ticker: str) -> pd.DataFrame:
+    """
+    ticker의 최근 1년간 시세 데이터를 DB로부터 얻어옴
+    """
+    today = pd.Timestamp.today()
+    last_business_day = (
+        today - pd.offsets.BDay(0 if today.dayofweek < 5 else 1)
+    ).date()
+    one_year_ago = (last_business_day - pd.DateOffset(years=1)).date()
+
+    return repo.find_prices_by_date(con, ticker, one_year_ago, last_business_day)
 
 
 # endregion
