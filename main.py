@@ -32,7 +32,7 @@ def main(page: ft.Page):
     prices_df = None
     tab_prices = views.create_price_view(prices_df)
 
-    join_df = None
+    join_df = service.get_joined_data(con)
     tab_join = views.create_join_view(join_df)
 
     tabs = ft.Tabs(

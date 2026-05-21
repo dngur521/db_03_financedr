@@ -119,3 +119,13 @@ def get_holdings(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 
 # endregion
+
+
+# =========================================================================
+# region: join
+# =========================================================================
+def get_joined_data(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    return repo.find_all_joins(con)
+
+
+# endregion

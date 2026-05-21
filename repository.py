@@ -173,3 +173,22 @@ def find_all_holdings(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 
 # endregion
+
+
+# =========================================================================
+# region: DuckDB join
+# =========================================================================
+def find_all_joins(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """
+    모든 종목-보유-계좌 join 데이터 검색
+    """
+    return con.execute("""
+        SELECT name, s.ticker, account_name AS account, brokerage, quantity, avg_buy_price
+        FROM account a
+        LEFT JOIN holding h ON a.account_id = h.account_id
+        LEFT JOIN asset s ON h.ticker = s.ticker
+        ORDER BY a.account_id, quantity DESC
+    """).df()
+
+
+# endregion
