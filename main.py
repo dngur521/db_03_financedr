@@ -1,23 +1,6 @@
-import duckdb
 import flet as ft
 
-import data_source as data
-import repository as repo
-
-
-# =========================================================================
-# region: Service (Business Logic)
-# =========================================================================
-def add_all_assets(con: duckdb.DuckDBPyConnection):
-    count = repo.get_assets_count(con)
-    if count <= 0:
-        df = data.fetch_asset_list()
-        repo.save_assets(con, df)
-    else:
-        print(f"[INFO] 종목 데이터 개수: {count}")
-
-
-# endregion
+import service
 
 
 # =========================================================================
@@ -32,12 +15,18 @@ def main(page: ft.Page):
     # page.scroll = ft.ScrollMode.ADAPTIVE
     # endregion
 
-    con = duckdb.connect("data/finance.db")
+    # Service
+    # con = duckdb.connect("data/finance.db")
+    con = service.connect_database("data/finance.db")
 
-    repo.create_table(con)
-    add_all_assets(con)
+    # Service
+    # repo.create_table(con)
+    # add_all_assets(con)
+    service.initialize(con)
 
-    df = repo.find_assets_by_keyword(con, None)
+    # Service
+    # df = repo.find_assets_by_keyword(con, None)
+    df = service.get_assets(con, None)
 
     # DataTable
     def create_rows(df) -> ft.DataRow:
@@ -54,7 +43,9 @@ def main(page: ft.Page):
     # Filtering
     def on_filter_change(e):
         # 입력된 텍스트로 asset 테이블 검색
-        filtered_df = repo.find_assets_by_keyword(con, e.control.value)
+        # Service
+        # filtered_df = repo.find_assets_by_keyword(con, e.control.value)
+        filtered_df = service.get_assets(con, e.control.value)
 
         table_assets.rows.clear()
         table_assets.rows = create_rows(filtered_df)
