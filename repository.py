@@ -3,7 +3,7 @@ import pandas as pd
 
 
 # =========================================================================
-# region: DuckDB Database Operations
+# region: DuckDB DDL
 # =========================================================================
 def create_table(con: duckdb.DuckDBPyConnection):
     """
@@ -60,6 +60,12 @@ def create_table(con: duckdb.DuckDBPyConnection):
     print("[INFO] DuckDB 테이블 생성 완료")
 
 
+# endregion
+
+
+# =========================================================================
+# region: DuckDB asset
+# =========================================================================
 def get_assets_count(con: duckdb.DuckDBPyConnection) -> int:
     """
     테이블의 Cardinality (tuple 개수) 반환
@@ -106,6 +112,35 @@ def find_assets_by_keyword(
             search_str,
         ],
     ).df()
+
+
+# endregion
+
+
+# =========================================================================
+# region: DuckDB account
+# =========================================================================
+def get_accounts_count(con: duckdb.DuckDBPyConnection) -> int:
+    """
+    테이블의 Cardinality (tuple 개수) 반환
+    """
+    return con.execute("SELECT COUNT(*) FROM account").fetchone()[0]
+
+
+def save_accounts(con: duckdb.DuckDBPyConnection, df: pd.DataFrame):
+    """
+    계좌 데이터 저장
+    """
+    print("[INFO] account 저장 시작")
+    con.execute("INSERT OR IGNORE INTO account SELECT * FROM df")
+    print("[INFO] account 저장 완료")
+
+
+def find_all_accounts(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """
+    계좌 검색
+    """
+    return con.execute("SELECT * FROM account ORDER BY account_id").df()
 
 
 # endregion

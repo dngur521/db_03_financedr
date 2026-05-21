@@ -23,7 +23,7 @@ def main(page: ft.Page):
 
     tab_assets = views.create_asset_view(df, search_assets)
 
-    accounts_df = None
+    accounts_df = service.get_accounts(con)
     tab_accounts = views.create_account_view(accounts_df)
 
     holdings_df = None
