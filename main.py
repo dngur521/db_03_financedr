@@ -1,5 +1,6 @@
 import duckdb
 import FinanceDataReader as fdr
+import flet as ft
 import pandas as pd
 
 
@@ -77,6 +78,38 @@ def save_assets(con: duckdb.DuckDBPyConnection, df: pd.DataFrame):
     print("[INFO] asset 저장 완료")
 
 
+def find_assets_by_keyword(
+    con: duckdb.DuckDBPyConnection, keyword: str
+) -> pd.DataFrame:
+    """
+    주식 및 ETF 검색. keyword 없으면 전체 결과 반환
+    """
+    # strip() 함수는 양쪽 공백 제거
+    # 빈 문자열("")은 False이므로, not ""은 True
+    if not keyword or not keyword.strip():
+        return con.execute("""
+            SELECT * 
+            FROM asset
+            ORDER BY country, name
+            LIMIT 200
+        """).df()
+
+    query = """
+        SELECT * FROM asset 
+        WHERE name ILIKE ?
+        OR ticker ILIKE ?
+        LIMIT 200
+    """
+    search_str = f"%{keyword}%"
+    return con.execute(
+        query,
+        [
+            search_str,
+            search_str,
+        ],
+    ).df()
+
+
 # endregion
 
 
@@ -91,61 +124,45 @@ def fetch_asset_list() -> pd.DataFrame:
 
     results = []
 
-    # 1. 한국 주식 (KRX) 안전하게 가져오기
-    try:
-        kr_stocks = fdr.StockListing("KRX")[["Code", "Name"]]
-        kr_stocks["country"] = "KR"
-        kr_stocks["type"] = "Stock"
-        kr_stocks = kr_stocks[["Code", "Name", "type", "country"]]
-        kr_stocks.columns = ["ticker", "name", "type", "country"]
-        results.append(kr_stocks)
-    except Exception as e:
-        print(f"[WARN] KRX 데이터를 가져오는데 실패했습니다: {e}")
+    # 한국 주식 (KOSPI, KOSDAQ, KONEX)
+    # 컬럼명이 Code임(나머지는 Symbol)
+    kr_stocks = fdr.StockListing("KRX")[["Code", "Name"]]
+    kr_stocks["country"] = "KR"
+    kr_stocks["type"] = "Stock"
 
-    # 2. 나머지 시장 루프
+    # 순서 변경
+    kr_stocks = kr_stocks[["Code", "Name", "type", "country"]]
+    # 컬럼명 변경 (DB의 asset 테이블과 맞춤)
+    kr_stocks.columns = ["ticker", "name", "type", "country"]
+
+    results.append(kr_stocks)
+
     markets = [
         ("ETF/KR", "KR", "ETF"),
         ("NASDAQ", "US", "Stock"),
         ("NYSE", "US", "Stock"),
-        # ("ETF/US", "US", "ETF"),
-        # 현재 오류 남
+        ("ETF/US", "US", "ETF"),
     ]
 
     for market, country, type in markets:
         print(f">>> FDR asset ({country}, {market}, {type}) 가져오기 시작 ")
 
-        try:
-            # 외부 API 호출 시 에러가 나거나 빈 데이터를 줄 때를 대비해 예외 처리
-            df = fdr.StockListing(market)
+        df = fdr.StockListing(market)[["Symbol", "Name"]]
+        df["country"] = country
+        df["type"] = type
 
-            if df is None or df.empty:
-                print(f"[WARN] {market} 데이터가 비어 있습니다. 건너뜁니다.")
-                continue
+        # 순서 변경
+        df = df[["country", "Symbol", "Name", "type"]]
+        # 컬럼명 변경 (DB의 asset 테이블과 맞춤)
+        df.columns = ["country", "ticker", "name", "type"]
 
-            df = df[["Symbol", "Name"]].copy()  # SettingWithCopyWarning 방지
-            df["country"] = country
-            df["type"] = type
-
-            # 순서 및 컬럼명 변경
-            df = df[["Symbol", "Name", "type", "country"]]
-            df.columns = ["ticker", "name", "type", "country"]
-
-            results.append(df)
-
-        except Exception as e:
-            # 에러가 발생해도 크래시 없이 다음 시장으로 넘어가도록 처리
-            print(f"[ERROR] {market} 데이터를 가져오는 중 오류 발생: {e}")
-            continue
+        results.append(df)
 
     print("[INFO] FDR asset (주식 및 ETF) 리스트 가져오기 완료")
 
-    # 수집된 데이터가 하나도 없을 경우 빈 데이터프레임 반환
-    if not results:
-        print("[WARN] 수집된 자산 데이터가 전혀 없습니다.")
-        return pd.DataFrame(columns=["ticker", "name", "type", "country"])
-
-    # 안전하게 병합
+    # 모든 데이터 병합
     df_assets = pd.concat(results, ignore_index=True)
+    # print(df_assets.head())
     return df_assets
 
 
@@ -170,14 +187,37 @@ def add_all_assets(con: duckdb.DuckDBPyConnection):
 # =========================================================================
 # region: Main
 # =========================================================================
-def main():
+def main(page: ft.Page):
+    # region [Page Setup]
+    page.title = "Finance Database"
+    page.padding = 16
+    page.window.width = 700
+    page.window.height = 500
+    page.scroll = ft.ScrollMode.ADAPTIVE
+    # endregion
+
     con = duckdb.connect("data/finance.db")
 
     create_table(con)
     add_all_assets(con)
 
+    # df = find_assets_by_keyword(con, None)
+    df = find_assets_by_keyword(con, "하이닉스")
+
+    table_assets = ft.DataTable(
+        columns=[ft.DataColumn(ft.Text(str.upper(col))) for col in df.columns],
+        rows=[
+            ft.DataRow(cells=[ft.DataCell(ft.Text(str(value))) for value in row])
+            for row in df.values
+        ],
+    )
+
+    page.add(
+        table_assets,
+    )
+
 
 if __name__ == "__main__":
-    main()
+    ft.run(main)
 
 # endregion
