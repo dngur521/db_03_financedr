@@ -1,4 +1,6 @@
 import duckdb
+import FinanceDataReader as fdr
+import pandas as pd
 
 
 # =========================================================================
@@ -59,6 +61,109 @@ def create_table(con: duckdb.DuckDBPyConnection):
     print("[INFO] DuckDB 테이블 생성 완료")
 
 
+def get_assets_count(con: duckdb.DuckDBPyConnection) -> int:
+    """
+    테이블의 Cardinality (tuple 개수) 반환
+    """
+    return con.execute("SELECT COUNT(*) FROM asset").fetchone()[0]
+
+
+def save_assets(con: duckdb.DuckDBPyConnection, df: pd.DataFrame):
+    """
+    주식 및 ETF 저장
+    """
+    print("[INFO] asset 저장 시작")
+    con.execute("INSERT OR IGNORE INTO asset SELECT * FROM df")
+    print("[INFO] asset 저장 완료")
+
+
+# endregion
+
+
+# =========================================================================
+# region: Finance Data Reader
+# =========================================================================
+def fetch_asset_list() -> pd.DataFrame:
+    """
+    asset (주식 및 ETF) 리스트 얻어옴
+    """
+    print("[INFO] FDR asset (주식 및 ETF) 리스트 가져오기 시작")
+
+    results = []
+
+    # 1. 한국 주식 (KRX) 안전하게 가져오기
+    try:
+        kr_stocks = fdr.StockListing("KRX")[["Code", "Name"]]
+        kr_stocks["country"] = "KR"
+        kr_stocks["type"] = "Stock"
+        kr_stocks = kr_stocks[["Code", "Name", "type", "country"]]
+        kr_stocks.columns = ["ticker", "name", "type", "country"]
+        results.append(kr_stocks)
+    except Exception as e:
+        print(f"[WARN] KRX 데이터를 가져오는데 실패했습니다: {e}")
+
+    # 2. 나머지 시장 루프
+    markets = [
+        ("ETF/KR", "KR", "ETF"),
+        ("NASDAQ", "US", "Stock"),
+        ("NYSE", "US", "Stock"),
+        # ("ETF/US", "US", "ETF"),
+        # 현재 오류 남
+    ]
+
+    for market, country, type in markets:
+        print(f">>> FDR asset ({country}, {market}, {type}) 가져오기 시작 ")
+
+        try:
+            # 외부 API 호출 시 에러가 나거나 빈 데이터를 줄 때를 대비해 예외 처리
+            df = fdr.StockListing(market)
+
+            if df is None or df.empty:
+                print(f"[WARN] {market} 데이터가 비어 있습니다. 건너뜁니다.")
+                continue
+
+            df = df[["Symbol", "Name"]].copy()  # SettingWithCopyWarning 방지
+            df["country"] = country
+            df["type"] = type
+
+            # 순서 및 컬럼명 변경
+            df = df[["Symbol", "Name", "type", "country"]]
+            df.columns = ["ticker", "name", "type", "country"]
+
+            results.append(df)
+
+        except Exception as e:
+            # 에러가 발생해도 크래시 없이 다음 시장으로 넘어가도록 처리
+            print(f"[ERROR] {market} 데이터를 가져오는 중 오류 발생: {e}")
+            continue
+
+    print("[INFO] FDR asset (주식 및 ETF) 리스트 가져오기 완료")
+
+    # 수집된 데이터가 하나도 없을 경우 빈 데이터프레임 반환
+    if not results:
+        print("[WARN] 수집된 자산 데이터가 전혀 없습니다.")
+        return pd.DataFrame(columns=["ticker", "name", "type", "country"])
+
+    # 안전하게 병합
+    df_assets = pd.concat(results, ignore_index=True)
+    return df_assets
+
+
+# endregion
+
+
+# =========================================================================
+# region: Service (Business Logic)
+# =========================================================================
+def add_all_assets(con: duckdb.DuckDBPyConnection):
+    count = get_assets_count(con)
+    if count <= 0:
+        df = fetch_asset_list()
+        save_assets(con, df)
+    else:
+        print(f"[INFO] 종목 데이터 개수: {count}")
+
+
 # endregion
 
 
@@ -69,6 +174,7 @@ def main():
     con = duckdb.connect("data/finance.db")
 
     create_table(con)
+    add_all_assets(con)
 
 
 if __name__ == "__main__":
